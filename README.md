@@ -1,37 +1,285 @@
-# Panic-buyng
+# Panic-Buying Analysis
 
-The main idea with this project is the consummer consumption in crises periods analisys.
+## 📌 Descrição do Projeto
 
-Para isso de inicio buscamos dados referentes a fatores ambientais como o volume de chuva (mm) e velocidade do vento. Esses dados climáticos são disponibilizados para diversas cidades do brasil pelo intituto nacional de meteorologia INMET, no formato .csv de hora em hora. Assim com a base de dados em mãos foi feito um trabalho de tratamento das informações disponibilizadas.
+Este projeto tem como objetivo analisar o comportamento do consumidor em períodos de crise, investigando possíveis episódios de *panic-buying* a partir de variáveis ambientais.
 
-Leitura, tratamento e filtragem dos dados:
-1. Instalação e dos pacotes em requirements.txt
-2. Leitura do arquivo .csv com a lib pandas
-3. Substituição de valores nulos por 0 (fillna(0)), devido a erro de coleta ou algo do tipo
-4. Ajuste da formatação das colunas
-    4.1 Data to datetime
-    4.2 Precipitação e Vento: .str.replace(',', '.').astype(float)
-5. Coluna "AnoMes": Define o mes de cada linha (db['Data Medicao'].dt.to_period('M'))
-6. Dataframe "dados_estatisticos" sobre os dados fornecidos
-7. Dataframe "info", informações com a quantidade de dados nulos obtidos na base de dados original, para precipitação e vento, além da quantidade total de precipitação no periodo de coleta. As seguites colunas: 'Cidade', 'qtd_nulos_chuva', 'qtd_nulos_vento', 'chuva_total'
-8. Através do agrupamento por dia e mês são criados os dataframes "db_diario" e "db_mensal"
-8.1 São inseridas mais três colunas no db_diario: 'severidade', 'acumulado_3dias' e 'severidade_3dias'. 'severidade' é inserida com uso da função 'classificar_severidade' de acordo com o volume de precipitação. A coluna 'acumulado_3dias' utiliza a função ntaiva do pandas rolling() com uma janela = 3, assim a coluna armazena para cada dia o volume total de precipitação do dia mais os ultimos dois, e 'severidade_3dias' é o mesmo principio de 'severidade' mas com a coluna 'acumulado_3dias' de argumento na função de classificação. Com isso a análise posterior de severidade fica mais clara, uma vez que periodos de crise normalmente se são devido a sequencia de dias de chiva e não necessariamente um dia só.
-8.2 a classificação de severdiade é aplicada ao db_mensal tambem
+A hipótese central é que eventos climáticos extremos — como chuvas intensas e ventos fortes — podem influenciar padrões de consumo, especialmente em contextos de incerteza ou risco percebido pela população.
 
+Os dados meteorológicos utilizados são disponibilizados pelo Instituto Nacional de Meteorologia (INMET), em formato `.csv`, com frequência horária e estrutura padronizada para diversas cidades brasileiras.
 
-Os dados fornecidos pelo INMET estruturados de maneira padronizada foi possivel criar uma fução "data_analisys" que contemple essas 9 etapas. "data_analisys" foi a primeira função criada para facilitar e padronizar o tratamento de todas as bases de dado, indepenedente da cidade ou quantidade de dados. Ela recebe dois argumentos (cidade, caminho csv), assim para a cidade fornecida ela retorna os seguintes itens: df da base dados original (bruta) fornecida pelo INMET, dados_estatisticos_df, info_df, df_diario e db_mensal. Com essa rotina é possivel tratar e ajustar diversos arquivos extraidos da plataforma de uma só vez com um laço de repetição.
+---
 
-- le_nome_cidade
-Essa função lê o arquivo .csv do INMET e retorna o nome da cidade correspondente ao arquivo.
+# 📊 Fonte de Dados
 
-- get_file_paths(folder_path=None)
-Get_file_paths recebe como argumento a pasta com os arquivos .csv e retorna duas listas 'nomes' com todos os nomes das cidades, e 'file_paths' com os repectivos caminhos de cada arquivo.
+- Instituição: INMET  
+- Frequência: Horária  
+- Formato: `.csv`  
+- Variáveis principais utilizadas:
+  - Precipitação (mm)
+  - Velocidade do vento
+  - Data da medição
 
-- plot_prec_diario_interativo(dataframe, nome) e def plot_prec_mensal_interativo_multi(dataframes, labels)
-Essa funções recebem os dataframes 'db_diario' e 'db_mensal' de 'data_analisys' e geram um grafico interativo para visualização da precipitação diaria e mensal no periodo contemplado.
-Tais graficos são importantes para fazer uma primeira analise a respeito dos periodos mais extremos de precipitação e assim conseguir identificar épocas em que talvez compras de panico e comporatamento do consumidor possam ter sido afetados. 
+Os dados brutos passam por um processo de tratamento e padronização antes de serem utilizados na análise.
 
-Assim com todas essas funções com um laço de repetição em nome e file_paths para cada arquivo são gerados todos dataframes ditos anteriormente e tudo isso é salvo em um dicionario em que a chave principal é o nome da cidade (dbs[nome])
+---
 
-Tambem fica facil para identificar dias criticos em que a severidade é extrema
-dias_criticos = fln[fln['acumulado_3dias'] >= 100]
+# ⚙️ Estrutura Geral do Pipeline
+
+Foi desenvolvida uma função principal chamada `data_analisys(cidade, caminho_csv)` com o objetivo de:
+
+- Padronizar o tratamento de dados
+- Automatizar o processamento para múltiplas cidades
+- Garantir reprodutibilidade
+- Reduzir redundância de código
+
+Essa função executa todas as etapas de leitura, limpeza, transformação e geração de bases derivadas.
+
+---
+
+# 🔄 Etapas Detalhadas do Processamento
+
+## 1️⃣ Instalação de dependências
+
+Os pacotes necessários estão listados no arquivo `requirements.txt`, garantindo reprodutibilidade do ambiente.
+
+---
+
+## 2️⃣ Leitura do arquivo
+
+O arquivo `.csv` é lido utilizando a biblioteca `pandas`, preservando a estrutura original fornecida pelo INMET.
+
+---
+
+## 3️⃣ Tratamento de valores nulos
+
+```python
+fillna(0)
+```
+
+Valores nulos são substituídos por `0`.
+
+**Justificativa:**  
+Grande parte dos valores ausentes está relacionada a falhas de coleta. Para variáveis como precipitação, a ausência frequentemente representa ausência de chuva. Essa decisão evita distorções em agregações posteriores.
+
+---
+
+## 4️⃣ Padronização e tipagem das colunas
+
+### Conversão de Data
+
+```python
+pd.to_datetime()
+```
+
+Permite:
+- Agrupamentos temporais
+- Cálculo de períodos
+- Ordenação cronológica
+
+---
+
+### Conversão de Precipitação e Vento
+
+```python
+.str.replace(',', '.').astype(float)
+```
+
+**Justificativa:**  
+Os dados do INMET utilizam vírgula como separador decimal. A conversão garante consistência numérica para cálculos estatísticos.
+
+---
+
+## 5️⃣ Criação da coluna `AnoMes`
+
+```python
+db['Data Medicao'].dt.to_period('M')
+```
+
+Permite agregações mensais e análises sazonais.
+
+---
+
+# 📈 DataFrames Gerados
+
+A função `data_analisys()` retorna múltiplas bases derivadas:
+
+---
+
+## 📊 1. `dados_estatisticos_df`
+
+Contém estatísticas descritivas gerais da base tratada:
+
+- Média
+- Desvio padrão
+- Valores máximos
+- Valores mínimos
+- Quartis
+
+Objetivo: permitir uma visão exploratória inicial da distribuição dos dados.
+
+---
+
+## 📋 2. `info_df`
+
+Resume informações sobre qualidade dos dados:
+
+| Coluna | Descrição |
+|--------|-----------|
+| Cidade | Nome da cidade |
+| qtd_nulos_chuva | Total de valores ausentes na precipitação |
+| qtd_nulos_vento | Total de valores ausentes na velocidade do vento |
+| chuva_total | Volume total acumulado de precipitação |
+
+Objetivo: avaliar confiabilidade da base e intensidade do período analisado.
+
+---
+
+## 📆 3. `db_diario`
+
+Obtido a partir do agrupamento diário.
+
+Além da soma diária da precipitação, três colunas adicionais são criadas:
+
+### 🔹 `severidade`
+
+Classificação baseada no volume diário de precipitação, utilizando a função:
+
+```python
+classificar_severidade()
+```
+
+Essa função categoriza o nível de risco (ex: leve, moderado, severo, extremo).
+
+---
+
+### 🔹 `acumulado_3dias`
+
+```python
+rolling(window=3)
+```
+
+Armazena a soma da precipitação do dia atual com os dois dias anteriores.
+
+**Justificativa técnica:**
+
+Eventos de crise raramente são causados por um único dia de chuva intensa, mas sim por sequências de dias chuvosos. O acumulado móvel captura melhor esse efeito sistêmico.
+
+---
+
+### 🔹 `severidade_3dias`
+
+Classificação aplicada ao `acumulado_3dias`.
+
+Permite identificar períodos críticos prolongados.
+
+---
+
+## 📅 4. `db_mensal`
+
+Base agregada mensalmente.
+
+A classificação de severidade também é aplicada para análise de sazonalidade e comparação intermensal.
+
+---
+
+# 🛠 Funções Auxiliares
+
+---
+
+## 🔎 `le_nome_cidade(caminho_csv)`
+
+Lê o arquivo `.csv` do INMET e extrai automaticamente o nome da cidade correspondente.
+
+**Objetivo:**  
+Evitar inserção manual de nomes e garantir consistência no armazenamento dos dados.
+
+---
+
+## 📂 `get_file_paths(folder_path=None)`
+
+Recebe como argumento a pasta contendo múltiplos arquivos `.csv`.
+
+Retorna duas listas:
+
+- `nomes` → nomes das cidades
+- `file_paths` → caminhos completos dos arquivos
+
+**Objetivo:**  
+Permitir processamento em lote através de laço de repetição.
+
+---
+
+# 📊 Funções de Visualização
+
+---
+
+## 📈 `plot_prec_diario_interativo(dataframe, nome)`
+
+Gera gráfico interativo da precipitação diária.
+
+Permite:
+
+- Identificar picos extremos
+- Detectar padrões temporais
+- Explorar visualmente eventos críticos
+
+---
+
+## 📊 `plot_prec_mensal_interativo_multi(dataframes, labels)`
+
+Gera gráfico comparativo mensal entre múltiplas cidades.
+
+Permite:
+
+- Comparação regional
+- Análise sazonal
+- Identificação de períodos atípicos
+
+---
+
+# 🧠 Armazenamento Estruturado
+
+Todos os resultados são armazenados em um dicionário estruturado:
+
+```python
+dbs[nome_cidade] = {
+    'bruto': df_original,
+    'estatisticas': dados_estatisticos_df,
+    'info': info_df,
+    'diario': db_diario,
+    'mensal': db_mensal
+}
+```
+
+Isso permite escalabilidade e fácil acesso às informações processadas.
+
+---
+
+# 🚨 Identificação de Dias Críticos
+
+Exemplo de filtro para eventos extremos:
+
+```python
+dias_criticos = db_diario[db_diario['acumulado_3dias'] >= 100]
+```
+
+O limiar pode ser ajustado conforme critérios técnicos ou literatura meteorológica.
+
+---
+
+# 🎯 Objetivo Analítico Final
+
+A estrutura desenvolvida permite:
+
+- Identificar eventos climáticos extremos
+- Medir intensidade e duração desses eventos
+- Criar variáveis explicativas para futura modelagem estatística
+- Investigar possíveis relações entre clima extremo e comportamento de consumo
+
+O pipeline modular permite expansão futura para:
+
+- Inclusão de dados de vendas
+- Modelos econométricos
+- Séries temporais
+- Machine Learning
