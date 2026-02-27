@@ -10,6 +10,24 @@ Os dados meteorológicos utilizados são disponibilizados pelo Instituto Naciona
 
 ---
 
+# 🎯 Objetivo Analítico Final
+
+A estrutura desenvolvida permite:
+
+- Identificar eventos climáticos extremos
+- Medir intensidade e duração desses eventos
+- Criar variáveis explicativas para futura modelagem estatística
+- Investigar possíveis relações entre clima extremo e comportamento de consumo
+
+O pipeline modular permite expansão futura para:
+
+- Inclusão de dados de vendas
+- Modelos econométricos
+- Séries temporais
+- Machine Learning
+
+---
+
 # 📊 Fonte de Dados
 
 - Instituição: INMET  
@@ -267,19 +285,3 @@ dias_criticos = db_diario[db_diario['acumulado_3dias'] >= 100]
 O limiar pode ser ajustado conforme critérios técnicos ou literatura meteorológica.
 
 ---
-
-# 🎯 Objetivo Analítico Final
-
-A estrutura desenvolvida permite:
-
-- Identificar eventos climáticos extremos
-- Medir intensidade e duração desses eventos
-- Criar variáveis explicativas para futura modelagem estatística
-- Investigar possíveis relações entre clima extremo e comportamento de consumo
-
-O pipeline modular permite expansão futura para:
-
-- Inclusão de dados de vendas
-- Modelos econométricos
-- Séries temporais
-- Machine Learning
