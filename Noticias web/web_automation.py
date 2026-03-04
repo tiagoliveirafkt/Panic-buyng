@@ -13,10 +13,14 @@ with sync_playwright() as playwright:
     time_load = 25000 #milisegundos
     time_click = 5000 #milisegundos
     links_vi57stos = set()
-    cliques = 200
+    cliques = 1450000
+    i=0
 
-    locais = ["supermercado", "mercado", "atacarejo", "comércio"]
-    problemas = ["falta", "vazia", "esgotado", "pânico", "limite", "alta", "desabastecimento"]
+    # Tiramos os plurais redundantes para o robô processar mais rápido
+    locais = ["supermercado", "mercado", "atacarejo", "comércio"] 
+
+    # Mantivemos as variações de gênero que realmente importam
+    problemas = ["falta", "vazia", "esgotado", "esgotadas", "pânico", "limite", "alta", "desabastecimento"]
 
     try:
         print(f"Aguardando o feed inicial (Limite: {time_load/1000}s)...")
@@ -27,7 +31,6 @@ with sync_playwright() as playwright:
         exit() 
 
     for clique in range(cliques + 1):
-        i=0
         print(f"\n--- 'página' {clique + 1} ---")
         qtd_anterior = -1
         blocos = page.query_selector_all(".feed-post-body")
@@ -65,30 +68,35 @@ with sync_playwright() as playwright:
     for bloco in blocos:
         elemento_titulo = bloco.query_selector(".feed-post-link")
 
-        if elemento_titulo:
-            titulo_texto = elemento_titulo.inner_text().lower()
-            tem_local = any(l.lower() in titulo_texto for l in locais)
-            tem_problema = any(p.lower() in titulo_texto for p in problemas)
+        if not elemento_titulo:
+            continue
 
-            if tem_local and tem_problema:
-                titulo = elemento_titulo.inner_text().strip()
-                link = elemento_titulo.get_attribute("href")
-                data = bloco.query_selector(".feed-post-datetime").inner_text().strip() if bloco.query_selector(".feed-post-datetime") else "Data não disponível"
-                local = next((l for l in locais if l.lower() in titulo_texto), "N/A")
-                problema = next((p for p in problemas if p.lower() in titulo_texto), "N/A")
+        titulo = elemento_titulo.inner_text().strip() if elemento_titulo else "Título não disponível"
+        titulo_lower = titulo.lower()
 
-                if link not in links_vistos:
-                    print(f"Notícia encontrada!")
-                    noticias.append({
-                        "Local": local, 
-                        "Problema": problema, 
-                        "Título": titulo, 
-                        "Data": data,
-                        "Link": link})
-                    links_vistos.add(link)
+        el_data = bloco.query_selector(".feed-post-datetime")
+        data = el_data.inner_text().strip() if el_data else "Data não disponível"
+        print(f"{i}--[{data}] {titulo}")
 
-            if not elemento_titulo: #pular links de publicidade ou blocos sem título
-                continue
+        tem_local = any(l.lower() in titulo_lower for l in locais)
+        tem_problema = any(p.lower() in titulo_lower for p in problemas)
+
+        if tem_local and tem_problema:
+            link = elemento_titulo.get_attribute("href")
+            local = next((l for l in locais if l.lower() in titulo_lower), "N/A")
+            problema = next((p for p in problemas if p.lower() in titulo_lower), "N/A")
+
+            if link not in links_vistos:
+                print(f"Notícia encontrada!")
+                noticias.append({
+                    "Local": local, 
+                    "Problema": problema, 
+                    "Título": titulo, 
+                    "Data": data,
+                    "Link": link})
+                links_vistos.add(link)
+        i +=1
+
     fim = time.time()
     tempo = fim - inicio
 
