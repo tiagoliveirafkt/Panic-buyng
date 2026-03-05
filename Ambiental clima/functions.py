@@ -59,7 +59,7 @@ def data_analisys(nome, csv):
     'nome': nome,
     'qtd_registros': registros,
     'qtd_nulos_chuva': nulos,
-    'Relacao_nulos': nulos / registros * 100,
+    'Relacao_nulos': format(round(nulos / registros * 100, 2), '.2f') + '%',
     'precip_total': float(db['PRECIPITACAO TOTAL, HORARIO(mm)'].sum())
     }
     df_info = pd.DataFrame([info])
