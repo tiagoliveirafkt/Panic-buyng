@@ -1,0 +1,27 @@
+
+line 36 
+Não bem um erro nessa linha, sóuma explicação
+
+blocos = page.query_selector_all(".feed-post-body") 
+O bloco é apenas um objeto, cada bloco na web tem um ponteiro (identificador). Basicamente 
+
+line 11
+page.goto("https://g1.globo.com/sc/santa-catarina/")
+
+Esse comando carrega tudo, imagens, videos, anuncios e etc. Ocasionando perda de tempo desnecessário
+
+line 33 
+for clique in range(cliques + 1):
+    blocos = page.query_selector_all(".feed-post-body")
+Isso ocasiona um processamento de orderm quadratica, primeiro clique 15 blocos, segundo clique blocos antigos mais blocos novos e assim vai. Isso acarreta em um acumulo excessivo de blocos que ocupam espaço na memória RAM
+
+line 69
+Analise excessiva
+
+for bloco in blocos:
+Diversas chamadas na rede .inner_text() ou .get_attribute()
+
+OTIMIZAÇÃO
+- Interceptação de Rede: Cancela o carregamento de imagens, videos e anuncios
+
+- Slicing: 

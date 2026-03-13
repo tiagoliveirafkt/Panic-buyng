@@ -2,114 +2,150 @@ from playwright.sync_api import sync_playwright
 import time
 import csv
 
+time_initial_load = 25000 #milisegundos
+time_click = 3500 #milisegundos
+time_scroll = 2000 #milisegundos
+cliques = 1000
+i=0
+
+#Filtragem
+locais = ["supermercado", "mercado", "atacarejo", "comércio"] 
+problemas = ["falta", "vazia", "esgotado", "esgotadas", "pânico", "limite", "alta", "desabastecimento"]
+
+def interceptar_media(route):
+    """Bloqueia o carregamento de imagens e CSS para ganhar velocidade."""
+    if route.request.resource_type in ["image", "media", "font", "stylesheet"]:
+        route.abort()
+    else:
+        route.continue_()
+
+def salvar_csv(dados, nome_arquivo):
+    if dados:
+        with open(nome_arquivo, mode='w', newline='', encoding='utf-8') as f:
+            colunas = ["Local", "Problema", "Título", "Data", "Link"]
+            writer = csv.DictWriter(f, fieldnames=colunas)
+            writer.writeheader()
+            writer.writerows(dados)
+        print(f"✅ Backup salvo em: {nome_arquivo}")
+
 inicio = time.time()
 
 with sync_playwright() as playwright:
-    browser = playwright.chromium.launch(headless=True)
+
+    browser = playwright.chromium.launch(headless=True) 
     page = browser.new_page()
 
+    page.route("**/*", interceptar_media)
+
+    print("Acessando o site...")
     page.goto("https://g1.globo.com/sc/santa-catarina/", wait_until="domcontentloaded")
 
-    time_load = 25000 #milisegundos
-    time_click = 5000 #milisegundos
-    links_vi57stos = set()
-    cliques = 1450000
-    i=0
-
-    # Tiramos os plurais redundantes para o robô processar mais rápido
-    locais = ["supermercado", "mercado", "atacarejo", "comércio"] 
-
-    # Mantivemos as variações de gênero que realmente importam
-    problemas = ["falta", "vazia", "esgotado", "esgotadas", "pânico", "limite", "alta", "desabastecimento"]
-
     try:
-        print(f"Aguardando o feed inicial (Limite: {time_load/1000}s)...")
-        page.wait_for_selector(".feed-post-body", timeout=time_load)
+        print(f"Aguardando o feed inicial (Limite: {time_initial_load/1000}s)...")
+        page.wait_for_selector(".feed-post-body", timeout=time_initial_load)
     except Exception:
-        print("ERRO CRÍTICO: O site não abriu. Abortando...")
+        print("!X ERRO CRÍTICO X!")
+        print("O site não abriu.")
         browser.close()
         exit() 
 
+    noticias = []
+    links_vistos = set()
+    ultimo_indice_processado = 0
+
     for clique in range(cliques + 1):
         print(f"\n--- 'página' {clique + 1} ---")
+
+        #Scroll logics
         qtd_anterior = -1
-        blocos = page.query_selector_all(".feed-post-body")
-
-        while len(blocos) > qtd_anterior:
-            qtd_anterior = len(blocos)
-            print(f"Tentativa {i+1}: Encontrados {len(blocos)} blocos até agora.")
-
-            if blocos:
-                ultimo_bloco = blocos[-1]
-                posicao = ultimo_bloco.bounding_box()
-                #print(f"Posição do último bloco: {posicao}")
-                if posicao:
-                    page.mouse.wheel(0, posicao["y"] + 650)
-                    page.wait_for_timeout(time_click*0.7)  # Espera p que o conteúdo carregue
-                    blocos = page.query_selector_all(".feed-post-body")
+        blocos_na_tela = page.query_selector_all(".feed-post-body") #coleta ponteiros dos blocos de notícias
+        while len(blocos_na_tela) > qtd_anterior:
+            qtd_anterior = len(blocos_na_tela)
             i += 1
-        
-        
+            print(f"Tentativa {i}: Encontrados {len(blocos_na_tela)} blocos até agora.")
+
+            if blocos_na_tela:
+                ultimo_bloco = blocos_na_tela[-1]
+                posicao = ultimo_bloco.bounding_box()
+                if posicao:
+                    page.mouse.wheel(0, posicao["y"] + 700)
+                    page.wait_for_timeout(time_scroll)  # Espera p que o conteúdo carregue
+                    blocos_na_tela = page.query_selector_all(".feed-post-body")
+
+        # Extração em massa
+        dados_extraidos = page.evaluate("""
+            () => {
+                const blocos = document.querySelectorAll('.feed-post-body');
+                return Array.from(blocos).map(b => {
+                    const linkEl = b.querySelector('.feed-post-link');
+                    const dataEl = b.querySelector('.feed-post-datetime');
+                    return {
+                        titulo: linkEl ? linkEl.innerText.trim() : null,
+                        link: linkEl ? linkEl.getAttribute('href') : null,
+                        data: dataEl ? dataEl.innerText.trim() : 'N/D'
+                    };
+                });
+            }
+        """)     
+
+        #Processamento local (slicing)
+        novos_blocos = dados_extraidos[ultimo_indice_processado:]
+           
+        #Analise dos blocos de notícias
+        for bloco in novos_blocos:
+            if not bloco["titulo"]: continue
+
+            titulo_low = bloco["titulo"].lower()
+            '''print(f"[{bloco['data']}] {bloco['titulo'][:60]}...")'''
+
+            # Filtro AND (Local E Problema)
+            if any(l in titulo_low for l in locais) and any(p in titulo_low for p in problemas):
+                if bloco['link'] not in links_vistos:
+                    print(">>> 🚨 Noticia encontrada! Salvando...")
+                    noticias.append({
+                        "Local": next((l for l in locais if l in titulo_low), "N/A"),
+                        "Problema": next((p for p in problemas if p in titulo_low), "N/A"),
+                        "Título": bloco['titulo'],
+                        "Data": bloco['data'],
+                        "Link": bloco['link']
+                    })
+                    links_vistos.add(bloco['link'])
+
+        ultimo_indice_processado = len(dados_extraidos)
+
+        # Lógica de backup a cada 25% de cliques
+        passo_backup = max(1, cliques // 4)
+        if clique > 0 and clique % passo_backup == 0:
+            porcentagem = (clique / cliques) * 100
+            print(f"\n--- 💾 Realizando backup de {porcentagem:.0f}%... ---")
+            nome_backup = f"backup_noticias_{cliques}cliks_{int(porcentagem)}pct.csv"
+            salvar_csv(noticias, nome_backup)
+
+        # Lógica de clique para carregar mais notícias
         if clique < cliques:
             # Usamos um seletor de texto para achar o botão "Veja mais"
             botao_veja_mais = page.query_selector("text=/(Veja mais|Mostrar mais|Carregar mais)/i")
-            
             if botao_veja_mais and botao_veja_mais.is_visible():
                 print("Clicando...")
                 botao_veja_mais.click()
                 page.wait_for_timeout(time_click) # Espera para o G1 "abrir" a nova seção de notícias
             else:
-                print("Botão 'Veja mais' não apareceu. Talvez chegamos ao fim absoluto.")
+                print("Botão 'Veja mais' não apareceu. Fim absoluto.")
                 break
-      
-    noticias = []
-    links_vistos = set()
-
-    for bloco in blocos:
-        elemento_titulo = bloco.query_selector(".feed-post-link")
-
-        if not elemento_titulo:
-            continue
-
-        titulo = elemento_titulo.inner_text().strip() if elemento_titulo else "Título não disponível"
-        titulo_lower = titulo.lower()
-
-        el_data = bloco.query_selector(".feed-post-datetime")
-        data = el_data.inner_text().strip() if el_data else "Data não disponível"
-        print(f"{i}--[{data}] {titulo}")
-
-        tem_local = any(l.lower() in titulo_lower for l in locais)
-        tem_problema = any(p.lower() in titulo_lower for p in problemas)
-
-        if tem_local and tem_problema:
-            link = elemento_titulo.get_attribute("href")
-            local = next((l for l in locais if l.lower() in titulo_lower), "N/A")
-            problema = next((p for p in problemas if p.lower() in titulo_lower), "N/A")
-
-            if link not in links_vistos:
-                print(f"Notícia encontrada!")
-                noticias.append({
-                    "Local": local, 
-                    "Problema": problema, 
-                    "Título": titulo, 
-                    "Data": data,
-                    "Link": link})
-                links_vistos.add(link)
-        i +=1
 
     fim = time.time()
     tempo = fim - inicio
 
-    arquivo_csv = f"noticias_g1_{cliques}cliks_{len(blocos)}b.csv"
-    if noticias:
-        with open(arquivo_csv, mode='w', newline='', encoding='utf-8') as f:
-            colunas = (["Local", "Problema", "Título", "Data", "Link"])
-            writer = csv.DictWriter(f, fieldnames=colunas)
-            writer.writeheader()
-            writer.writerows(noticias)
+    nome_csv = f"noticias_g1_{cliques}cliks_{len(noticias)}news.csv"
+    salvar_csv(noticias, nome_csv)
 
-        print(f"\n{len(noticias)} notícias salvas em '{arquivo_csv}' com os locais e problemas: {', '.join(locais + problemas)}")
+    print("\n" + "="*40)
+    print(f"🏆 SUCESSO! Coleta finalizada.")
+    print(f"⏱️ Tempo total: {tempo:.2f} segundos")
+    print(f"📦 Total de blocos lidos: {ultimo_indice_processado}")
+    print(f"📊 Notícias de interesse salvas: {len(noticias)}")
+    print(f"📄 Arquivo: {nome_csv}")
+    print("="*40)
 
-    
-    print(f"Tempo {tempo:.2f} s")
+
     browser.close()
