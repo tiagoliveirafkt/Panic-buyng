@@ -1,16 +1,26 @@
 from playwright.sync_api import sync_playwright
 import time
+import re
 import csv
+import os
 
+termo_busca = "supermercado"
+url_buca = f"https://g1.globo.com/busca/?q={termo_busca}&species=noticias&order=relevant&from=2020-03-01T03%3A00%3A00.000Z&to=2020-03-31T02%3A59%3A59.999Z"
 time_initial_load = 25000 #milisegundos
 time_click = 3500 #milisegundos
 time_scroll = 2000 #milisegundos
-cliques = 1000
+cliques = 25
 i=0
 
+# Configuração de Salvamento
+pasta = r"C:\Users\tiago\UFSC (local)\Prologis\Panic buyng\Noticias web\Dados gerados"
+
 #Filtragem
-locais = ["supermercado", "mercado", "atacarejo", "comércio"] 
-problemas = ["falta", "vazia", "esgotado", "esgotadas", "pânico", "limite", "alta", "desabastecimento"]
+problemas = [
+    "falta", "vazia", "esgotado", "esgotada", "pânico", "limite", 
+    "desabastecimento", "escassez", "esvaziamento", "racionamento", 
+    "racionam", "limitando", "limitam", "corrida", "aumento", "crise"
+]
 
 def interceptar_media(route):
     """Bloqueia o carregamento de imagens e CSS para ganhar velocidade."""
@@ -21,12 +31,14 @@ def interceptar_media(route):
 
 def salvar_csv(dados, nome_arquivo):
     if dados:
-        with open(nome_arquivo, mode='w', newline='', encoding='utf-8') as f:
-            colunas = ["Local", "Problema", "Título", "Data", "Link"]
+        caminho_completo = os.path.join(pasta, nome_arquivo)
+        
+        with open(caminho_completo, mode='w', newline='', encoding='utf-8') as f:
+            colunas = ["Problema", "Título", "Data", "Link"]
             writer = csv.DictWriter(f, fieldnames=colunas)
             writer.writeheader()
             writer.writerows(dados)
-        print(f"✅ Backup salvo em: {nome_arquivo}")
+        print(f"✅ Arquivo salvo em: {caminho_completo}")
 
 inicio = time.time()
 
@@ -34,15 +46,14 @@ with sync_playwright() as playwright:
 
     browser = playwright.chromium.launch(headless=True) 
     page = browser.new_page()
-
     page.route("**/*", interceptar_media)
 
-    print("Acessando o site...")
-    page.goto("https://g1.globo.com/sc/santa-catarina/", wait_until="domcontentloaded")
+    print("🔍 Direcionando busca para: 'supermercado'...")
+    page.goto(url_buca, wait_until="domcontentloaded")
 
     try:
         print(f"Aguardando o feed inicial (Limite: {time_initial_load/1000}s)...")
-        page.wait_for_selector(".feed-post-body", timeout=time_initial_load)
+        page.wait_for_selector(".widget--info__text-container", timeout=time_initial_load)
     except Exception:
         print("!X ERRO CRÍTICO X!")
         print("O site não abriu.")
@@ -57,36 +68,31 @@ with sync_playwright() as playwright:
         print(f"\n--- 'página' {clique + 1} ---")
 
         #Scroll logics
-        qtd_anterior = -1
-        blocos_na_tela = page.query_selector_all(".feed-post-body") #coleta ponteiros dos blocos de notícias
-        while len(blocos_na_tela) > qtd_anterior:
-            qtd_anterior = len(blocos_na_tela)
-            i += 1
-            print(f"Tentativa {i}: Encontrados {len(blocos_na_tela)} blocos até agora.")
+        blocos_na_tela = page.query_selector_all(".widget--info__text-container") #coleta ponteiros dos blocos de notícias
 
-            if blocos_na_tela:
-                ultimo_bloco = blocos_na_tela[-1]
-                posicao = ultimo_bloco.bounding_box()
-                if posicao:
-                    page.mouse.wheel(0, posicao["y"] + 700)
-                    page.wait_for_timeout(time_scroll)  # Espera p que o conteúdo carregue
-                    blocos_na_tela = page.query_selector_all(".feed-post-body")
+        if blocos_na_tela:
+            posicao = blocos_na_tela[-1].bounding_box()
+            if posicao:
+                page.mouse.wheel(0, posicao["y"] + 700)
+                page.wait_for_timeout(time_scroll)  # Espera p que o conteúdo carregue
 
         # Extração em massa
         dados_extraidos = page.evaluate("""
-            () => {
-                const blocos = document.querySelectorAll('.feed-post-body');
-                return Array.from(blocos).map(b => {
-                    const linkEl = b.querySelector('.feed-post-link');
-                    const dataEl = b.querySelector('.feed-post-datetime');
-                    return {
-                        titulo: linkEl ? linkEl.innerText.trim() : null,
-                        link: linkEl ? linkEl.getAttribute('href') : null,
-                        data: dataEl ? dataEl.innerText.trim() : 'N/D'
-                    };
-                });
-            }
-        """)     
+                    () => {
+                        const blocos = document.querySelectorAll('.widget--info__text-container');
+                        return Array.from(blocos).map(b => {
+                            const linkEl = b.querySelector('a'); // Na busca, o <a> envolve o conteúdo
+                            const tituloEl = b.querySelector('.widget--info__title');
+                            const dataEl = b.querySelector('.widget--info__meta span'); // A data costuma estar num span dentro do meta
+                            
+                            return {
+                                titulo: tituloEl ? tituloEl.innerText.trim() : null,
+                                link: linkEl ? linkEl.getAttribute('href') : null,
+                                data: dataEl ? dataEl.innerText.trim() : 'N/D'
+                            };
+                        });
+                    }
+                """)
 
         #Processamento local (slicing)
         novos_blocos = dados_extraidos[ultimo_indice_processado:]
@@ -96,38 +102,46 @@ with sync_playwright() as playwright:
             if not bloco["titulo"]: continue
 
             titulo_low = bloco["titulo"].lower()
-            '''print(f"[{bloco['data']}] {bloco['titulo'][:60]}...")'''
+            match_problema = next((p for p in problemas if p in titulo_low), None)
 
             # Filtro AND (Local E Problema)
-            if any(l in titulo_low for l in locais) and any(p in titulo_low for p in problemas):
-                if bloco['link'] not in links_vistos:
-                    print(">>> 🚨 Noticia encontrada! Salvando...")
-                    noticias.append({
-                        "Local": next((l for l in locais if l in titulo_low), "N/A"),
-                        "Problema": next((p for p in problemas if p in titulo_low), "N/A"),
-                        "Título": bloco['titulo'],
-                        "Data": bloco['data'],
-                        "Link": bloco['link']
-                    })
-                    links_vistos.add(bloco['link'])
+            if match_problema and bloco['link'] not in links_vistos:
+                print(f"🚨 MATCH: [{bloco['data']}] - {bloco['titulo'][:70]}...")
+                noticias.append({
+                "Problema": match_problema,
+                "Título": bloco['titulo'],
+                "Data": bloco['data'],
+                "Link": bloco['link']
+            })
+                links_vistos.add(bloco['link'])
+            else:
+                # Limpa a linha antes de imprimir o log de leitura para evitar sobreposição
+                print(f"(Lendo) {bloco['data']}", end="\r")
 
         ultimo_indice_processado = len(dados_extraidos)
 
         # Lógica de backup a cada 25% de cliques
+
         passo_backup = max(1, cliques // 4)
         if clique > 0 and clique % passo_backup == 0:
             porcentagem = (clique / cliques) * 100
-            print(f"\n--- 💾 Realizando backup de {porcentagem:.0f}%... ---")
-            nome_backup = f"backup_noticias_{cliques}cliks_{int(porcentagem)}pct.csv"
-            salvar_csv(noticias, nome_backup)
+            print(f"\n--- 💾 Atualizando backup ({porcentagem:.0f}% concluído)... ---")
+            if porcentagem != 100:
+                nome_backup = f"backup_analise.csv"
+                salvar_csv(noticias, nome_backup)
+            else:   
+                salvar_csv(noticias, 'arquivo_final.csv')
+
+            
 
         # Lógica de clique para carregar mais notícias
         if clique < cliques:
             # Usamos um seletor de texto para achar o botão "Veja mais"
-            botao_veja_mais = page.query_selector("text=/(Veja mais|Mostrar mais|Carregar mais)/i")
-            if botao_veja_mais and botao_veja_mais.is_visible():
-                print("Clicando...")
-                botao_veja_mais.click()
+            botao_veja_mais = page.locator(".pagination__load-more a, button").filter(has_text=re.compile(r"Veja mais|Mostrar mais|Carregar mais", re.IGNORECASE)).first
+
+            if botao_veja_mais:
+                print("\nClicando...")
+                botao_veja_mais.click(timeout=6000)
                 page.wait_for_timeout(time_click) # Espera para o G1 "abrir" a nova seção de notícias
             else:
                 print("Botão 'Veja mais' não apareceu. Fim absoluto.")
@@ -136,15 +150,13 @@ with sync_playwright() as playwright:
     fim = time.time()
     tempo = fim - inicio
 
-    nome_csv = f"noticias_g1_{cliques}cliks_{len(noticias)}news.csv"
-    salvar_csv(noticias, nome_csv)
 
     print("\n" + "="*40)
     print(f"🏆 SUCESSO! Coleta finalizada.")
     print(f"⏱️ Tempo total: {tempo:.2f} segundos")
     print(f"📦 Total de blocos lidos: {ultimo_indice_processado}")
     print(f"📊 Notícias de interesse salvas: {len(noticias)}")
-    print(f"📄 Arquivo: {nome_csv}")
+    print(f"📄 Arquivo: {nome_backup}")
     print("="*40)
 
 
