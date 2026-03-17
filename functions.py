@@ -1,10 +1,9 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
 import os
-import seaborn as sns
+from datetime import datetime, timedelta
 
 def classificar_severidade(mm):
     if mm == 0: return 'Sem Chuva'
@@ -112,3 +111,37 @@ def plot_Prec_multi(dataframes, labels, coluna_x, coluna_y, titulo):
     )
 
     fig.show(renderer="browser")
+
+
+def gerar_intervalos_g1(data_inicio_str, data_fim_str, intervalo_dias, termo_busca):
+    formato_entrada = "%d/%m/%Y"
+    formato_g1 = "%Y-%m-%dT03:00:00.000Z" # O G1 usa o formato ISO 8601 com Z (UTC)
+    
+    data_inicio = datetime.strptime(data_inicio_str, formato_entrada)
+    data_fim = datetime.strptime(data_fim_str, formato_entrada)
+    
+    resultado = {'Data inicio': [], 'urls': []}
+    data_atual = data_inicio
+    
+    while data_atual < data_fim:
+        resultado['Data inicio'].append(data_atual.strftime(formato_entrada))
+        proxima_data = data_atual + timedelta(days=intervalo_dias)
+        
+        # Garante que a data final do intervalo não ultrapasse a data limite
+        if proxima_data > data_fim:
+            proxima_data = data_fim
+            
+        # Formata as datas para a URL
+        de_str = data_atual.strftime(formato_g1)
+        ate_str = proxima_data.strftime(formato_g1)
+        
+        # Substitui os caracteres especiais para ficarem prontos para URL (%3A para o :)
+        de_url = de_str.replace(":", "%3A")
+        ate_url = ate_str.replace(":", "%3A")
+        
+        url = (f"https://g1.globo.com/busca/?q={termo_busca}&species=noticias&order=relevant"
+               f"&from={de_url}&to={ate_url}")
+        
+        resultado['urls'].append(url)
+        data_atual = proxima_data + timedelta(days=1) # Pula para o dia seguinte para não sobrepor
+    return resultado
