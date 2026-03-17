@@ -77,7 +77,6 @@ def renomear_backup_se_progresso_mudar(nome_atual, nome_novo):
         if os.path.exists(destino):
             os.remove(destino)
         os.replace(origem, destino)
-        print(f"📝 Backup renomeado para: {destino}")
 
     return nome_novo
 
@@ -87,7 +86,7 @@ infos = {'periodo':[], 'total de blocos':[], 'noticias do periodo':[], 'noticias
 time_initial_load = 25000 #milisegundos
 time_click = 3500 #milisegundos
 time_scroll = 2000 #milisegundos
-cliques = 5
+cliques = 20
 
 #Config periodos
 termo_busca = "supermercado"
@@ -132,7 +131,7 @@ for periodo, url_buca in zip(periodos, urls):
         page = browser.new_page()
         page.route("**/*", interceptar_media)
 
-        print(f"🔍 Inicio busca para: 'supermercado' no período: {periodo}")
+        print(f"🔍 Inicio busca no período: {periodo}")
         page.goto(url_buca, wait_until="domcontentloaded")
 
         try:
@@ -262,6 +261,27 @@ for periodo, url_buca in zip(periodos, urls):
 fim_total = time.time()
 tempo_total = fim_total - inicio_total
 salvar_csv(noticias_totais, 'arquivo_final_completo.csv')
-salvar_csv(infos, 'resumo_coleta.csv')
+
+#salva infos em csv
+os.makedirs(pasta, exist_ok=True)
+
+caminho_completo = os.path.join(pasta, f'resumo_coleta_{cliques}cliks.csv')
+with open(caminho_completo, mode='w', newline='', encoding='utf-8') as f:
+    colunas = ['periodo', 'total de blocos', 'noticias do periodo', 'noticias acumuladas', 'tempo iteracao', 'arquivo']
+    writer = csv.DictWriter(f, fieldnames=colunas)
+    writer.writeheader()
+    for i in range(len(infos['periodo'])):
+        writer.writerow({
+            'periodo': infos['periodo'][i],
+            'total de blocos': infos['total de blocos'][i],
+            'noticias do periodo': infos['noticias do periodo'][i],
+            'noticias acumuladas': infos['noticias acumuladas'][i],
+            'tempo iteracao': infos['tempo iteracao'][i],
+            'arquivo': infos['arquivo'][i]
+        })
+
+print(f"✅ Arquivo informativo salvo em: {caminho_completo}")
+
+
 print(f"\n⏱️ Tempo total de execução: {tempo_total:.2f} segundos")
 print(f"🧾 Total final de notícias: {len(noticias_totais)}")
