@@ -86,11 +86,11 @@ infos = {'periodo':[], 'total de blocos':[], 'noticias do periodo':[], 'noticias
 time_initial_load = 25000 #milisegundos
 time_click = 3500 #milisegundos
 time_scroll = 2000 #milisegundos
-cliques = 20
+cliques = 15
 
 #Config periodos
 termo_busca = "supermercado"
-data_incio = '01/01/2018'
+data_incio = '25/03/2024'
 data_fim = '31/12/2025'
 intervalo = 90
 
